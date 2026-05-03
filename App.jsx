@@ -49,7 +49,6 @@ export default function App() {
   const [isRubricaOpen, setIsRubricaOpen] = useState(false);
   const [rubricaView, setRubricaView] = useState('list');
   const [currentContact, setCurrentContact] = useState(null);
-  const [isEditingContact, setIsEditingContact] = useState(false);
 
   const defaultContact = { name: '', surname: '', phone: '39', role: 'Barman', pay: '12/h' };
 
@@ -163,10 +162,13 @@ export default function App() {
     setTimeout(() => { setRubricaView('list'); setCurrentContact(null); }, 200);
   };
   const handleAddNewContactClick = () => {
-    setCurrentContact({ ...defaultContact }); setRubricaView('form'); setIsEditingContact(true);
+    setCurrentContact({ ...defaultContact }); setRubricaView('form');
   };
-  const handleEditContactClick = (contact) => {
-    setCurrentContact({ ...contact }); setRubricaView('form'); setIsEditingContact(false);
+  const handleViewContactClick = (contact) => {
+    setCurrentContact({ ...contact }); setRubricaView('detail');
+  };
+  const handleEditContactClick = () => {
+    setRubricaView('form');
   };
 
   const saveContact = async () => {
@@ -204,7 +206,24 @@ export default function App() {
     if (emp.pay) messageBody.push(`• *Paga:* €${emp.pay}`);
     if (emp.notes) messageBody.push(`• *Note:* ${emp.notes}`);
 
-    const rawMessage = `*CHIC BAR - DETTAGLI EVENTO*\n\nCiao ${emp.name || ''}! 👋\nEcco tutte le info per l'evento${clientNameText} del *${formattedDate}*.\n\n${messageBody.join('\n')}\n\nPer favore, dammi conferma di ricezione. Grazie e buon lavoro! 🚀`;
+    const dateStr = eventDate.replace(/-/g, '');
+    const startT = (emp.startTime || '18:00').replace(':', '');
+    const endT = (emp.endTime || '02:00').replace(':', '');
+    const endDate = endT <= startT
+      ? new Date(new Date(eventDate).getTime() + 86400000).toISOString().split('T')[0].replace(/-/g, '')
+      : dateStr;
+    const calTitle = encodeURIComponent(`Evento Chic Bar Catering${event.clientName ? ' - ' + event.clientName : ''}`);
+    let calDetails = [];
+    if (emp.role) calDetails.push(`Ruolo: ${emp.role}`);
+    if (emp.startTime || emp.endTime) calDetails.push(`Orario: dalle ${emp.startTime || '18:00'} alle ${emp.endTime || '02:00'}`);
+    if (emp.uniformColor) calDetails.push(`Divisa: ${emp.uniformColor}`);
+    if (emp.pay) calDetails.push(`Paga: €${emp.pay}`);
+    if (emp.role === 'Barman' && emp.drinkList) calDetails.push(`Drink List: ${emp.drinkList}`);
+    if (emp.mapsLink) calDetails.push(`Maps: ${emp.mapsLink}`);
+    if (emp.notes) calDetails.push(`Note: ${emp.notes}`);
+    const calLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${calTitle}&dates=${dateStr}T${startT}00/${endDate}T${endT}00&details=${encodeURIComponent(calDetails.join('\n'))}&location=${encodeURIComponent(emp.mapsLink || event.location || '')}`;
+
+    const rawMessage = `*CHIC BAR - DETTAGLI EVENTO*\n\nCiao ${emp.name || ''}! 👋\nEcco tutte le info per l'evento${clientNameText} del *${formattedDate}*.\n\n${messageBody.join('\n')}\n\n📅 *Aggiungi al calendario:* ${calLink}\n\nPer favore, dammi conferma di ricezione. Grazie e buon lavoro! 🚀`;
     window.open(`https://wa.me/${(emp.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(rawMessage)}`, '_blank');
   };
 
@@ -270,7 +289,9 @@ export default function App() {
           const isExpanded = expandedEvent === event.id;
           const staffFilled = (event.staff || []).filter(s => s.name && s.surname).length;
           const staffTotal = parseInt(event.staffNeeded) || 0;
-          const allConfirmed = staffTotal > 0 && (event.staff || []).filter(s => s.confirmed).length === staffTotal;
+          const confirmedCount = (event.staff || []).filter(s => s.confirmed).length;
+          const squadraFormata = staffTotal > 0 && confirmedCount === staffTotal;
+          const mancaCount = staffTotal - confirmedCount;
 
           return (
             <div key={event.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
@@ -279,7 +300,7 @@ export default function App() {
                 onClick={(e) => { e.stopPropagation(); setExpandedEvent(isExpanded ? null : event.id); }}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${allConfirmed ? 'bg-green-400' : staffFilled === staffTotal && staffTotal > 0 ? 'bg-yellow-400' : 'bg-slate-300'}`} />
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${squadraFormata ? 'bg-green-400' : staffFilled === staffTotal && staffTotal > 0 ? 'bg-yellow-400' : 'bg-slate-300'}`} />
                   <div className="min-w-0">
                     <p className="font-bold text-slate-800 truncate text-sm sm:text-base">
                       {event.clientName || <span className="italic text-slate-400">Nuovo evento</span>}
@@ -291,9 +312,17 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-xs text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded-full">
-                    {staffFilled}/{staffTotal} staff
-                  </span>
+                  {staffTotal > 0 && (
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${squadraFormata ? 'bg-green-100 text-green-700' : 'bg-orange-50 text-orange-600'}`}>
+                      {squadraFormata ? '✅ Squadra formata' : `⚠️ Manca ${mancaCount} conferma/e`}
+                    </span>
+                  )}
+                  <button
+                    className="text-slate-300 hover:text-red-400 transition-colors p-1"
+                    onClick={e => { e.stopPropagation(); setDeleteConfirm(event.id); }}
+                  >
+                    <Trash2 size={15} />
+                  </button>
                   {isExpanded ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
                 </div>
               </div>
@@ -372,15 +401,6 @@ export default function App() {
                       ))}
                     </div>
                   )}
-
-                  <div className="pt-2 flex justify-end">
-                    <button
-                      className="text-red-500 border border-red-200 hover:bg-red-50 px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 transition-colors"
-                      onClick={e => { e.stopPropagation(); setDeleteConfirm(event.id); }}
-                    >
-                      <Trash2 size={14} /> Elimina evento
-                    </button>
-                  </div>
                 </div>
               )}
             </div>
@@ -406,17 +426,17 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex" onClick={closeRubrica}>
           <div className="ml-auto w-full max-w-sm bg-white h-full shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              {rubricaView === 'form' ? (
-                <button onClick={() => setRubricaView('list')} className="flex items-center gap-1 text-[#385b4f] font-bold text-sm">
-                  <ChevronLeft size={18} /> Rubrica
-                </button>
-              ) : (
+              {rubricaView === 'list' ? (
                 <h2 className="font-black text-lg text-[#385b4f]">Rubrica Staff</h2>
+              ) : (
+                <button onClick={() => setRubricaView(rubricaView === 'form' && currentContact?.id ? 'detail' : 'list')} className="flex items-center gap-1 text-[#385b4f] font-bold text-sm">
+                  <ChevronLeft size={18} /> {rubricaView === 'form' && currentContact?.id ? 'Dettaglio' : 'Rubrica'}
+                </button>
               )}
               <button onClick={closeRubrica} className="text-slate-400 hover:text-slate-600"><X size={22} /></button>
             </div>
 
-            {rubricaView === 'list' ? (
+            {rubricaView === 'list' && (
               <>
                 <div className="flex-1 overflow-y-auto">
                   {contacts.length === 0 ? (
@@ -425,7 +445,7 @@ export default function App() {
                       <p className="text-sm">Nessun contatto</p>
                     </div>
                   ) : contacts.sort((a, b) => (a.surname || '').localeCompare(b.surname || '')).map(c => (
-                    <div key={c.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 border-b border-slate-50 cursor-pointer" onClick={() => handleEditContactClick(c)}>
+                    <div key={c.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 border-b border-slate-50 cursor-pointer" onClick={() => handleViewContactClick(c)}>
                       <div>
                         <p className="font-semibold text-sm">{c.surname} {c.name}</p>
                         <p className="text-xs text-slate-400">{c.role} · {c.phone}</p>
@@ -440,7 +460,50 @@ export default function App() {
                   </button>
                 </div>
               </>
-            ) : (
+            )}
+
+            {rubricaView === 'detail' && currentContact && (
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium">Nome</p>
+                    <p className="text-sm font-semibold text-slate-800">{currentContact.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium">Cognome</p>
+                    <p className="text-sm font-semibold text-slate-800">{currentContact.surname}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium">Telefono</p>
+                    <p className="text-sm font-semibold text-slate-800">{currentContact.phone}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium">Ruolo</p>
+                    <p className="text-sm font-semibold text-slate-800">{currentContact.role}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium">Paga default</p>
+                    <p className="text-sm font-semibold text-slate-800">{currentContact.pay || '—'}</p>
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => deleteContact(currentContact.id)}
+                    className="flex-1 border border-red-200 text-red-500 rounded-xl py-2.5 font-medium text-sm hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Trash2 size={14} /> Elimina
+                  </button>
+                  <button
+                    onClick={handleEditContactClick}
+                    className="flex-1 bg-[#385b4f] text-white rounded-xl py-2.5 font-bold text-sm hover:bg-[#2c473e] transition-colors flex items-center justify-center gap-1"
+                  >
+                    Modifica
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {rubricaView === 'form' && (
               <div className="flex-1 overflow-y-auto p-5 space-y-4">
                 <div>
                   <label className="text-xs text-slate-500 font-medium block mb-1">Nome</label>
@@ -479,11 +542,6 @@ export default function App() {
                     placeholder="es. 12/h" />
                 </div>
                 <div className="flex gap-3 pt-2">
-                  {currentContact?.id && (
-                    <button onClick={() => deleteContact(currentContact.id)} className="flex-1 border border-red-200 text-red-500 rounded-xl py-2.5 font-medium text-sm hover:bg-red-50 transition-colors flex items-center justify-center gap-1">
-                      <Trash2 size={14} /> Elimina
-                    </button>
-                  )}
                   <button onClick={saveContact} disabled={!currentContact?.name || !currentContact?.surname}
                     className="flex-1 bg-[#385b4f] text-white rounded-xl py-2.5 font-bold text-sm hover:bg-[#2c473e] transition-colors disabled:opacity-40">
                     Salva
