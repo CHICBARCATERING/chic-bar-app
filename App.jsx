@@ -439,7 +439,7 @@ export default function App() {
           const sameDayCount = dateCounts[event.date] || 0;
           const showDoubleWarning = sameDayCount > 1 && !isPast;
 
-          const knownVenue = LOCATIONS.some(l => l.name === event.location);
+          const knownVenue = locations.some(l => l.name === event.location);
           const isCustomLoc = event.locationCustom || (!!event.location && !knownVenue);
 
           return (
@@ -514,13 +514,13 @@ export default function App() {
                           } else if (val === '') {
                             updateEvent(event.id, { location: '', locationMaps: '', locationCustom: false });
                           } else {
-                            const venue = LOCATIONS.find(l => l.name === val);
+                            const venue = locations.find(l => l.name === val);
                             updateEvent(event.id, { location: val, locationMaps: venue ? venue.maps : '', locationCustom: false });
                           }
                         }}
                       >
                         <option value="">— Seleziona —</option>
-                        {LOCATIONS.map(l => <option key={l.name} value={l.name}>{l.name}</option>)}
+                        {locations.map(l => <option key={l.name} value={l.name}>{l.name}</option>)}
                         <option value="__custom__">Altro (scrivi a mano)</option>
                       </select>
                       {isCustomLoc && (
