@@ -25,7 +25,7 @@ const appId = 'chic-bar-agency-2026';
 
 const getDefaultPay = (role) => {
   switch(role) {
-    case 'Barman': return '12/h';
+    case 'Barman': return '10/h';
     case 'Cameriere': return '10/h';
     case 'Aiuto Barman': return '8/h';
     case 'Videomaker': return '50';
@@ -84,6 +84,11 @@ export default function App() {
   const [isRubricaOpen, setIsRubricaOpen] = useState(false);
   const [rubricaView, setRubricaView] = useState('list');
   const [currentContact, setCurrentContact] = useState(null);
+  const [locations, setLocations] = useState([]);
+  const [isLocRubricaOpen, setIsLocRubricaOpen] = useState(false);
+  const [locRubricaView, setLocRubricaView] = useState('list');
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const defaultLocation = { name: '', maps: '' };
 
   const defaultContact = { name: '', surname: '', phone: '', role: 'Barman', pay: '12/h' };
 
