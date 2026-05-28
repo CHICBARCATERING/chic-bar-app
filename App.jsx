@@ -244,6 +244,37 @@ export default function App() {
     setRubricaView('list');
   };
 
+  const openLocRubrica = () => { setLocRubricaView('list'); setIsLocRubricaOpen(true); };
+  const closeLocRubrica = () => {
+    setIsLocRubricaOpen(false);
+    setTimeout(() => { setLocRubricaView('list'); setCurrentLocation(null); }, 200);
+  };
+  const handleAddNewLocationClick = () => {
+    setCurrentLocation({ ...defaultLocation }); setLocRubricaView('form');
+  };
+  const handleViewLocationClick = (loc) => {
+    setCurrentLocation({ ...loc }); setLocRubricaView('detail');
+  };
+  const handleEditLocationClick = () => {
+    setLocRubricaView('form');
+  };
+
+  const saveLocation = async () => {
+    if (!currentLocation.name) return;
+    const locationsCollection = collection(db, 'artifacts', appId, 'public', 'data', 'locations');
+    if (currentLocation.id) {
+      const { id, ...data } = currentLocation;
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'locations', id), data);
+    } else {
+      await addDoc(locationsCollection, { ...currentLocation, createdAt: Date.now() });
+    }
+    setLocRubricaView('list');
+  };
+
+  const deleteLocation = async (locationId) => {
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'locations', locationId));
+    setLocRubricaView('list');
+  };
   // Scrive al contatto via WhatsApp direttamente dalla rubrica.
   const messageContact = (contact) => {
     const phone = (contact.phone || '').replace(/\D/g, '');
