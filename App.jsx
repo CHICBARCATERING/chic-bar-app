@@ -404,6 +404,12 @@ export default function App() {
               <Users size={16} /> <span className="hidden sm:inline">Rubrica</span>
             </button>
             <button
+              onClick={(e) => { e.stopPropagation(); openLocRubrica(); }}
+              className="bg-white border-2 border-[#385b4f] text-[#385b4f] px-3 py-2 rounded-xl flex items-center gap-1.5 hover:bg-[#385b4f] hover:text-white transition-all font-bold text-sm"
+            >
+              <MapPin size={16} /> <span className="hidden sm:inline">Location</span>
+            </button>
+            <button
               onClick={(e) => { e.stopPropagation(); createNewEvent(); }}
               className="bg-[#385b4f] text-white px-3 py-2 rounded-xl flex items-center gap-1.5 hover:bg-[#2c473e] transition-all font-bold shadow text-sm"
             >
