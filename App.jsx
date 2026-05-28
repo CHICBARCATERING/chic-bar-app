@@ -606,6 +606,113 @@ export default function App() {
         </div>
       )}
 
+      {isLocRubricaOpen && (
+        <div className="fixed inset-0 z-50 flex" onClick={closeLocRubrica}>
+          <div className="ml-auto w-full max-w-sm bg-white h-full shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              {locRubricaView === 'list' ? (
+                <h2 className="font-black text-lg text-[#385b4f]">Rubrica Location</h2>
+              ) : (
+                <button onClick={() => setLocRubricaView(locRubricaView === 'form' && currentLocation?.id ? 'detail' : 'list')} className="flex items-center gap-1 text-[#385b4f] font-bold text-sm">
+                  <ChevronLeft size={18} /> {locRubricaView === 'form' && currentLocation?.id ? 'Dettaglio' : 'Rubrica'}
+                </button>
+              )}
+              <button onClick={closeLocRubrica} className="text-slate-400 hover:text-slate-600"><X size={22} /></button>
+            </div>
+
+            {locRubricaView === 'list' && (
+              <>
+                <div className="flex-1 overflow-y-auto">
+                  {locations.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400">
+                      <MapPin size={36} className="mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">Nessuna location</p>
+                    </div>
+                  ) : locations.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(l => (
+                    <div key={l.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 border-b border-slate-50">
+                      <div className="cursor-pointer flex-1 min-w-0" onClick={() => handleViewLocationClick(l)}>
+                        <p className="font-semibold text-sm truncate">{l.name}</p>
+                        <p className="text-xs text-slate-400 truncate">{l.maps || 'Nessun link'}</p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {l.maps && (
+                          <a href={l.maps} target="_blank" rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-[#385b4f] hover:text-[#2c473e] p-1.5" title="Apri su Maps">
+                            <Map size={16} />
+                          </a>
+                        )}
+                        <ChevronRight size={16} className="text-slate-300" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="p-4 border-t border-slate-100">
+                  <button onClick={handleAddNewLocationClick} className="w-full bg-[#385b4f] text-white rounded-xl py-3 font-bold flex items-center justify-center gap-2 hover:bg-[#2c473e] transition-colors">
+                    <Plus size={18} /> Nuova location
+                  </button>
+                </div>
+              </>
+            )}
+
+            {locRubricaView === 'detail' && currentLocation && (
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium">Nome</p>
+                    <p className="text-sm font-semibold text-slate-800">{currentLocation.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium">Link Maps</p>
+                    <p className="text-sm font-semibold text-slate-800 break-all">{currentLocation.maps || '—'}</p>
+                  </div>
+                </div>
+                {currentLocation.maps && (
+                  <a href={currentLocation.maps} target="_blank" rel="noopener noreferrer"
+                    className="w-full bg-[#385b4f] text-white rounded-xl py-2.5 font-bold text-sm hover:bg-[#2c473e] transition-colors flex items-center justify-center gap-2">
+                    <Map size={16} /> Apri su Maps
+                  </a>
+                )}
+                <div className="flex gap-3 pt-1">
+                  <button onClick={() => deleteLocation(currentLocation.id)}
+                    className="flex-1 border border-red-200 text-red-500 rounded-xl py-2.5 font-medium text-sm hover:bg-red-50 transition-colors flex items-center justify-center gap-1">
+                    <Trash2 size={14} /> Elimina
+                  </button>
+                  <button onClick={handleEditLocationClick}
+                    className="flex-1 bg-[#385b4f] text-white rounded-xl py-2.5 font-bold text-sm hover:bg-[#2c473e] transition-colors flex items-center justify-center gap-1">
+                    Modifica
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {locRubricaView === 'form' && (
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <div>
+                  <label className="text-xs text-slate-500 font-medium block mb-1">Nome location</label>
+                  <input className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
+                    value={currentLocation?.name || ''}
+                    onChange={e => setCurrentLocation(p => ({ ...p, name: e.target.value }))}
+                    placeholder="es. Villa Egea" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 font-medium block mb-1">Link Maps</label>
+                  <input className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
+                    value={currentLocation?.maps || ''}
+                    onChange={e => setCurrentLocation(p => ({ ...p, maps: e.target.value }))}
+                    placeholder="Incolla qui il link di Google Maps" />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button onClick={saveLocation} disabled={!currentLocation?.name}
+                    className="flex-1 bg-[#385b4f] text-white rounded-xl py-2.5 font-bold text-sm hover:bg-[#2c473e] transition-colors disabled:opacity-40">
+                    Salva
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {isRubricaOpen && (
         <div className="fixed inset-0 z-50 flex" onClick={closeRubrica}>
           <div className="ml-auto w-full max-w-sm bg-white h-full shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
