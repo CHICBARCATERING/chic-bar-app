@@ -6,7 +6,7 @@ import {
   Phone, MessageCircle, Calendar, Trash2, Plus,
   CheckCircle2, Clock, MapPin, User, Briefcase,
   ChevronRight, ChevronDown, ChevronLeft, Link, DollarSign,
-  Map, GlassWater, Shirt, FileText, LayoutGrid, List, Send, Check, Users, X
+  Map, GlassWater, Shirt, FileText, LayoutGrid, List, Send, Check, Users, X, Bell, AlertTriangle
 } from 'lucide-react';
 
 const firebaseConfig = {
@@ -17,6 +17,7 @@ const firebaseConfig = {
   messagingSenderId: "1039444075661",
   appId: "1:1039444075661:web:bbf93e0dd986fa3daa6ec4"
 };
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -35,22 +36,56 @@ const getDefaultPay = (role) => {
 
 const ROLES = ['Barman', 'Cameriere', 'Aiuto Barman', 'Videomaker', 'Responsabile', 'Altro'];
 
+// Location ricorrenti con link Maps pronto (ricerca Google Maps).
+const LOCATIONS = [
+  { name: 'Domus Latae', maps: 'https://www.google.com/maps/search/?api=1&query=Domus+Latae' },
+  { name: 'Villa Alfonso', maps: 'https://www.google.com/maps/search/?api=1&query=Villa+Alfonso' },
+  { name: 'Villa del Vecchio Pozzo', maps: 'https://www.google.com/maps/search/?api=1&query=Villa+del+Vecchio+Pozzo' },
+  { name: 'Villa Egea', maps: 'https://www.google.com/maps/search/?api=1&query=Villa+Egea' },
+  { name: 'Villa Lisa', maps: 'https://www.google.com/maps/search/?api=1&query=Villa+Lisa' },
+  { name: 'Villa Sciarrera Hera', maps: 'https://www.google.com/maps/search/?api=1&query=Villa+Sciarrera+Hera' },
+  { name: 'Salone Romano', maps: 'https://www.google.com/maps/search/?api=1&query=Salone+Romano' },
+];
+
+// Calcola quanti giorni mancano all'evento e l'etichetta da mostrare.
+const getEventTiming = (dateStr) => {
+  if (!dateStr) return { label: '', tone: 'none', daysDiff: null };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length !== 3) return { label: '', tone: 'none', daysDiff: null };
+  const eventDate = new Date(parts[0], parts[1] - 1, parts[2]);
+  eventDate.setHours(0, 0, 0, 0);
+  const diff = Math.round((eventDate - today) / 86400000);
+  if (diff < 0) return { label: 'PASSATO', tone: 'past', daysDiff: diff };
+  if (diff === 0) return { label: 'OGGI', tone: 'today', daysDiff: 0 };
+  if (diff === 1) return { label: 'DOMANI', tone: 'soon', daysDiff: 1 };
+  if (diff <= 7) return { label: `TRA ${diff} GIORNI`, tone: 'soon', daysDiff: diff };
+  return { label: `TRA ${diff} GIORNI`, tone: 'future', daysDiff: diff };
+};
+
+const timingStyles = {
+  today: 'bg-red-100 text-red-700',
+  soon: 'bg-amber-100 text-amber-700',
+  future: 'bg-slate-100 text-slate-500',
+  past: 'bg-slate-100 text-slate-400',
+  none: 'bg-slate-100 text-slate-400'
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
-
   const [expandedEvent, setExpandedEvent] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [activeDropdownId, setActiveDropdownId] = useState(null);
-
   const [isRubricaOpen, setIsRubricaOpen] = useState(false);
   const [rubricaView, setRubricaView] = useState('list');
   const [currentContact, setCurrentContact] = useState(null);
 
-  const defaultContact = { name: '', surname: '', phone: '39', role: 'Barman', pay: '12/h' };
+  const defaultContact = { name: '', surname: '', phone: '', role: 'Barman', pay: '12/h' };
 
   useEffect(() => {
     const initAuth = async () => {
@@ -68,7 +103,6 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-
     const eventsCollection = collection(db, 'artifacts', appId, 'public', 'data', 'events');
     const unsubEvents = onSnapshot(eventsCollection,
       (snapshot) => {
@@ -77,13 +111,11 @@ export default function App() {
       },
       (error) => { console.error("Firestore events error:", error); setLoading(false); }
     );
-
     const contactsCollection = collection(db, 'artifacts', appId, 'public', 'data', 'contacts');
     const unsubContacts = onSnapshot(contactsCollection,
       (snapshot) => setContacts(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
       (error) => console.error("Firestore contacts error:", error)
     );
-
     return () => { unsubEvents(); unsubContacts(); };
   }, [user]);
 
@@ -92,6 +124,8 @@ export default function App() {
     const newDoc = await addDoc(eventsCollection, {
       clientName: '',
       location: '',
+      locationMaps: '',
+      locationCustom: false,
       date: new Date().toISOString().split('T')[0],
       staffNeeded: 0,
       staff: [],
@@ -111,9 +145,11 @@ export default function App() {
     if (expandedEvent === eventId) setExpandedEvent(null);
   };
 
+  // FIX BUG: non taglia più gli slot pieni senza avvisare.
   const generateStaffSlots = (event) => {
     const count = parseInt(event.staffNeeded) || 0;
     const currentStaff = [...(event.staff || [])];
+
     if (currentStaff.length < count) {
       for (let i = currentStaff.length; i < count; i++) {
         currentStaff.push({
@@ -121,14 +157,24 @@ export default function App() {
           name: '', surname: '', role: 'Barman', pay: '',
           date: event.date, startTime: '18:00', endTime: '02:00',
           uniformColor: 'Nera (Camicia nera, pantaloni neri)',
-          mapsLink: '', drinkList: '', notes: '',
+          mapsLink: event.locationMaps || '', drinkList: '', notes: '',
           confirmed: false, sent: false, phone: ''
         });
       }
-    } else {
+      updateEvent(event.id, { staff: currentStaff });
+    } else if (currentStaff.length > count) {
+      const toRemove = currentStaff.slice(count);
+      const hasData = toRemove.some(s => s.name || s.surname || s.phone || s.confirmed || s.sent);
+      if (hasData) {
+        const ok = window.confirm(
+          `Attenzione: stai per rimuovere ${currentStaff.length - count} slot che contengono già dati o conferme. Vuoi procedere?`
+        );
+        if (!ok) return;
+      }
       currentStaff.length = count;
+      updateEvent(event.id, { staff: currentStaff });
     }
-    updateEvent(event.id, { staff: currentStaff });
+    // Se il numero è uguale, non tocca nulla.
   };
 
   const updateStaffMember = (eventId, staffId, field, value) => {
@@ -188,6 +234,13 @@ export default function App() {
     setRubricaView('list');
   };
 
+  // Scrive al contatto via WhatsApp direttamente dalla rubrica.
+  const messageContact = (contact) => {
+    const phone = (contact.phone || '').replace(/\D/g, '');
+    if (!phone) return;
+    window.open(`https://wa.me/${phone}`, '_blank');
+  };
+
   const formatWhatsAppMessage = (event, emp) => {
     const clientNameText = event.clientName ? ` *${event.clientName}*` : '';
     const eventDate = emp.date || event.date;
@@ -212,6 +265,7 @@ export default function App() {
     const endDate = endT <= startT
       ? new Date(new Date(eventDate).getTime() + 86400000).toISOString().split('T')[0].replace(/-/g, '')
       : dateStr;
+
     const calTitle = encodeURIComponent(`Evento Chic Bar Catering${event.clientName ? ' - ' + event.clientName : ''}`);
     let calDetails = [];
     if (emp.role) calDetails.push(`Ruolo: ${emp.role}`);
@@ -221,9 +275,32 @@ export default function App() {
     if (emp.role === 'Barman' && emp.drinkList) calDetails.push(`Drink List: ${emp.drinkList}`);
     if (emp.mapsLink) calDetails.push(`Maps: ${emp.mapsLink}`);
     if (emp.notes) calDetails.push(`Note: ${emp.notes}`);
+
     const calLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${calTitle}&dates=${dateStr}T${startT}00/${endDate}T${endT}00&details=${encodeURIComponent(calDetails.join('\n'))}&location=${encodeURIComponent(emp.mapsLink || event.location || '')}`;
 
     const rawMessage = `*CHIC BAR - DETTAGLI EVENTO*\n\nCiao ${emp.name || ''}! 👋\nEcco tutte le info per l'evento${clientNameText} del *${formattedDate}*.\n\n${messageBody.join('\n')}\n\n📅 *Aggiungi al calendario:* ${calLink}\n\nPer favore, dammi conferma di ricezione. Grazie e buon lavoro! 🚀`;
+
+    window.open(`https://wa.me/${(emp.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(rawMessage)}`, '_blank');
+  };
+
+  // PROMEMORIA: messaggio corto da inviare il giorno prima.
+  const formatReminderMessage = (event, emp) => {
+    const eventDate = emp.date || event.date;
+    const dateParts = eventDate.split('-');
+    const formattedDate = dateParts.length === 3
+      ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`
+      : eventDate;
+
+    let lines = [`Ciao ${emp.name || ''}! 👋`];
+    lines.push(`Ti ricordo l'evento${event.clientName ? ' *' + event.clientName + '*' : ''} del *${formattedDate}*.`);
+    lines.push('');
+    lines.push(`⏰ Ti aspetto alle *${emp.startTime || '18:00'}*${event.location ? ' a *' + event.location + '*' : ''}.`);
+    if (emp.mapsLink) lines.push(`📍 Maps: ${emp.mapsLink}`);
+    if (emp.uniformColor) lines.push(`👔 Divisa: ${emp.uniformColor}`);
+    lines.push('');
+    lines.push('Fammi sapere che è tutto ok. A presto! 🚀');
+
+    const rawMessage = lines.join('\n');
     window.open(`https://wa.me/${(emp.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(rawMessage)}`, '_blank');
   };
 
@@ -234,9 +311,26 @@ export default function App() {
     return dateStr;
   };
 
+  // Conta quanti eventi cadono nello stesso giorno (per l'avviso doppio evento).
+  const dateCounts = events.reduce((acc, e) => {
+    if (e.date) acc[e.date] = (acc[e.date] || 0) + 1;
+    return acc;
+  }, {});
+
+  // ORDINAMENTO: prima i futuri (dal più vicino), poi i passati (dal più recente).
   const sortedEvents = [...events].sort((a, b) => {
-    if (a.date < b.date) return -1;
-    if (a.date > b.date) return 1;
+    const da = getEventTiming(a.date).daysDiff;
+    const dbb = getEventTiming(b.date).daysDiff;
+    if (da === null && dbb === null) return (b.createdAt || 0) - (a.createdAt || 0);
+    if (da === null) return 1;
+    if (dbb === null) return -1;
+    const aPast = da < 0, bPast = dbb < 0;
+    if (aPast !== bPast) return aPast ? 1 : -1;
+    if (!aPast) {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    } else {
+      if (a.date !== b.date) return a.date > b.date ? -1 : 1;
+    }
     return (b.createdAt || 0) - (a.createdAt || 0);
   });
 
@@ -290,11 +384,19 @@ export default function App() {
           const staffFilled = (event.staff || []).filter(s => s.name && s.surname).length;
           const staffTotal = parseInt(event.staffNeeded) || 0;
           const confirmedCount = (event.staff || []).filter(s => s.confirmed).length;
+          const sentCount = (event.staff || []).filter(s => s.sent).length;
           const squadraFormata = staffTotal > 0 && confirmedCount === staffTotal;
           const mancaCount = staffTotal - confirmedCount;
+          const timing = getEventTiming(event.date);
+          const isPast = timing.daysDiff !== null && timing.daysDiff < 0;
+          const sameDayCount = dateCounts[event.date] || 0;
+          const showDoubleWarning = sameDayCount > 1 && !isPast;
+
+          const knownVenue = LOCATIONS.some(l => l.name === event.location);
+          const isCustomLoc = event.locationCustom || (!!event.location && !knownVenue);
 
           return (
-            <div key={event.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div key={event.id} className={`bg-white rounded-2xl shadow-sm border overflow-hidden ${timing.tone === 'today' ? 'border-red-200' : 'border-slate-100'} ${isPast ? 'opacity-70' : ''}`}>
               <div
                 className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
                 onClick={(e) => { e.stopPropagation(); setExpandedEvent(isExpanded ? null : event.id); }}
@@ -302,13 +404,25 @@ export default function App() {
                 <div className="flex items-center gap-3 min-w-0">
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${squadraFormata ? 'bg-green-400' : staffFilled === staffTotal && staffTotal > 0 ? 'bg-yellow-400' : 'bg-slate-300'}`} />
                   <div className="min-w-0">
-                    <p className="font-bold text-slate-800 truncate text-sm sm:text-base">
-                      {event.clientName || <span className="italic text-slate-400">Nuovo evento</span>}
-                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-bold text-slate-800 truncate text-sm sm:text-base">
+                        {event.clientName || <span className="italic text-slate-400">Nuovo evento</span>}
+                      </p>
+                      {timing.label && (
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full tracking-wide ${timingStyles[timing.tone]}`}>
+                          {timing.label}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-slate-400 flex items-center gap-1">
                       <Calendar size={11} /> {formatDateDisplay(event.date)}
                       {event.location && <><span className="mx-1">·</span><MapPin size={11} />{event.location}</>}
                     </p>
+                    {showDoubleWarning && (
+                      <p className="text-[11px] text-red-500 font-semibold flex items-center gap-1 mt-0.5">
+                        <AlertTriangle size={11} /> Attenzione: {sameDayCount} eventi in questa data
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
@@ -342,13 +456,35 @@ export default function App() {
                     </div>
                     <div>
                       <label className="text-xs text-slate-500 font-medium block mb-1">Location</label>
-                      <input
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
-                        value={event.location || ''}
-                        onChange={e => updateEvent(event.id, { location: e.target.value })}
-                        placeholder="Via, Città"
+                      <select
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
+                        value={isCustomLoc ? '__custom__' : (knownVenue ? event.location : '')}
                         onClick={e => e.stopPropagation()}
-                      />
+                        onChange={e => {
+                          const val = e.target.value;
+                          if (val === '__custom__') {
+                            updateEvent(event.id, { locationCustom: true, locationMaps: '' });
+                          } else if (val === '') {
+                            updateEvent(event.id, { location: '', locationMaps: '', locationCustom: false });
+                          } else {
+                            const venue = LOCATIONS.find(l => l.name === val);
+                            updateEvent(event.id, { location: val, locationMaps: venue ? venue.maps : '', locationCustom: false });
+                          }
+                        }}
+                      >
+                        <option value="">— Seleziona —</option>
+                        {LOCATIONS.map(l => <option key={l.name} value={l.name}>{l.name}</option>)}
+                        <option value="__custom__">Altro (scrivi a mano)</option>
+                      </select>
+                      {isCustomLoc && (
+                        <input
+                          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-2 focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
+                          value={event.location || ''}
+                          onChange={e => updateEvent(event.id, { location: e.target.value })}
+                          placeholder="Via, Città"
+                          onClick={e => e.stopPropagation()}
+                        />
+                      )}
                     </div>
                     <div>
                       <label className="text-xs text-slate-500 font-medium block mb-1">Data</label>
@@ -381,6 +517,12 @@ export default function App() {
                     </div>
                   </div>
 
+                  {staffTotal > 0 && (
+                    <p className="text-xs text-slate-400">
+                      Inviati: <span className="font-semibold text-slate-600">{sentCount}/{(event.staff || []).length}</span> · Confermati: <span className="font-semibold text-slate-600">{confirmedCount}/{staffTotal}</span>
+                    </p>
+                  )}
+
                   {(event.staff || []).length > 0 && (
                     <div className="space-y-3">
                       <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Slot Staff</p>
@@ -397,6 +539,7 @@ export default function App() {
                           applyContactToSlot={applyContactToSlot}
                           removeStaffMember={removeStaffMember}
                           formatWhatsAppMessage={formatWhatsAppMessage}
+                          formatReminderMessage={formatReminderMessage}
                         />
                       ))}
                     </div>
@@ -444,13 +587,24 @@ export default function App() {
                       <Users size={36} className="mx-auto mb-2 opacity-30" />
                       <p className="text-sm">Nessun contatto</p>
                     </div>
-                  ) : contacts.sort((a, b) => (a.surname || '').localeCompare(b.surname || '')).map(c => (
-                    <div key={c.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 border-b border-slate-50 cursor-pointer" onClick={() => handleViewContactClick(c)}>
-                      <div>
-                        <p className="font-semibold text-sm">{c.surname} {c.name}</p>
+                  ) : contacts.slice().sort((a, b) => (a.surname || '').localeCompare(b.surname || '')).map(c => (
+                    <div key={c.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 border-b border-slate-50">
+                      <div className="cursor-pointer flex-1 min-w-0" onClick={() => handleViewContactClick(c)}>
+                        <p className="font-semibold text-sm truncate">{c.surname} {c.name}</p>
                         <p className="text-xs text-slate-400">{c.role} · {c.phone}</p>
                       </div>
-                      <ChevronRight size={16} className="text-slate-300" />
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {c.phone && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); messageContact(c); }}
+                            className="text-green-500 hover:text-green-600 p-1.5"
+                            title="Scrivi su WhatsApp"
+                          >
+                            <MessageCircle size={16} />
+                          </button>
+                        )}
+                        <ChevronRight size={16} className="text-slate-300" />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -486,7 +640,15 @@ export default function App() {
                     <p className="text-sm font-semibold text-slate-800">{currentContact.pay || '—'}</p>
                   </div>
                 </div>
-                <div className="flex gap-3 pt-2">
+                {currentContact.phone && (
+                  <button
+                    onClick={() => messageContact(currentContact)}
+                    className="w-full bg-green-500 text-white rounded-xl py-2.5 font-bold text-sm hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <MessageCircle size={16} /> Scrivi su WhatsApp
+                  </button>
+                )}
+                <div className="flex gap-3 pt-1">
                   <button
                     onClick={() => deleteContact(currentContact.id)}
                     className="flex-1 border border-red-200 text-red-500 rounded-xl py-2.5 font-medium text-sm hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
@@ -556,14 +718,21 @@ export default function App() {
   );
 }
 
-function StaffSlot({ emp, idx, event, contacts, activeDropdownId, setActiveDropdownId, updateStaffMember, applyContactToSlot, removeStaffMember, formatWhatsAppMessage }) {
+function StaffSlot({ emp, idx, event, contacts, activeDropdownId, setActiveDropdownId, updateStaffMember, applyContactToSlot, removeStaffMember, formatWhatsAppMessage, formatReminderMessage }) {
   const dropdownId = `${event.id}-${emp.id}`;
   const isDropdownOpen = activeDropdownId === dropdownId;
 
   return (
     <div className="border border-slate-200 rounded-2xl p-3 space-y-3 bg-slate-50">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-500">STAFF #{idx + 1}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-slate-500">STAFF #{idx + 1}</span>
+          {emp.sent && (
+            <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <Check size={10} /> Inviato
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {emp.confirmed && <CheckCircle2 size={14} className="text-green-500" />}
           <button onClick={e => { e.stopPropagation(); removeStaffMember(event.id, emp.id); }} className="text-slate-300 hover:text-red-400 transition-colors">
@@ -589,7 +758,7 @@ function StaffSlot({ emp, idx, event, contacts, activeDropdownId, setActiveDropd
             </div>
             {contacts.length === 0
               ? <p className="text-xs text-slate-400 p-3 text-center">Nessun contatto in rubrica</p>
-              : contacts.sort((a, b) => (a.surname || '').localeCompare(b.surname || '')).map(c => (
+              : contacts.slice().sort((a, b) => (a.surname || '').localeCompare(b.surname || '')).map(c => (
                 <button key={c.id} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm"
                   onClick={e => { e.stopPropagation(); applyContactToSlot(event.id, emp.id, c); }}>
                   <span className="font-medium">{c.surname} {c.name}</span>
@@ -693,13 +862,21 @@ function StaffSlot({ emp, idx, event, contacts, activeDropdownId, setActiveDropd
           <CheckCircle2 size={15} /> {emp.confirmed ? 'Confermato' : 'Conferma'}
         </button>
         <button
-          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-green-500 text-white hover:bg-green-600 transition-colors disabled:opacity-40"
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-40 ${emp.sent ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-green-500 text-white hover:bg-green-600'}`}
           disabled={!emp.phone}
           onClick={e => { e.stopPropagation(); formatWhatsAppMessage(event, emp); updateStaffMember(event.id, emp.id, 'sent', true); }}
         >
-          <MessageCircle size={15} /> WhatsApp
+          <MessageCircle size={15} /> {emp.sent ? 'Reinvia' : 'WhatsApp'}
         </button>
       </div>
+
+      <button
+        className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors disabled:opacity-40"
+        disabled={!emp.phone}
+        onClick={e => { e.stopPropagation(); formatReminderMessage(event, emp); }}
+      >
+        <Bell size={15} /> Promemoria (giorno prima)
+      </button>
     </div>
   );
 }
