@@ -580,6 +580,7 @@ export default function App() {
                           idx={idx}
                           event={event}
                           contacts={contacts}
+                          locations={locations}
                           activeDropdownId={activeDropdownId}
                           setActiveDropdownId={setActiveDropdownId}
                           updateStaffMember={updateStaffMember}
@@ -872,7 +873,7 @@ export default function App() {
   );
 }
 
-function StaffSlot({ emp, idx, event, contacts, activeDropdownId, setActiveDropdownId, updateStaffMember, applyContactToSlot, removeStaffMember, formatWhatsAppMessage, formatReminderMessage }) {
+function StaffSlot({ emp, idx, event, contacts, locations, activeDropdownId, setActiveDropdownId, updateStaffMember, applyContactToSlot, removeStaffMember, formatWhatsAppMessage, formatReminderMessage }) {
   const dropdownId = `${event.id}-${emp.id}`;
   const isDropdownOpen = activeDropdownId === dropdownId;
 
@@ -996,6 +997,12 @@ function StaffSlot({ emp, idx, event, contacts, activeDropdownId, setActiveDropd
 
       <div onClick={e => e.stopPropagation()}>
         <label className="text-xs text-slate-400 mb-0.5 block">Link Maps</label>
+        <select className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white mb-1 focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
+          value="" onChange={e => { if (e.target.value) updateStaffMember(event.id, emp.id, 'mapsLink', e.target.value); }}>
+          <option value="">📍 Compila da…</option>
+          {event.locationMaps && <option value={event.locationMaps}>📍 Posizione evento</option>}
+          {(locations || []).map(l => l.maps && <option key={l.id} value={l.maps}>{l.name}</option>)}
+        </select>
         <input className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
           value={emp.mapsLink || ''} onChange={e => updateStaffMember(event.id, emp.id, 'mapsLink', e.target.value)}
           placeholder="https://maps.google.com/..." />
