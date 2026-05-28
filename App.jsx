@@ -121,6 +121,11 @@ export default function App() {
       (snapshot) => setContacts(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
       (error) => console.error("Firestore contacts error:", error)
     );
+    onSnapshot(
+      collection(db, 'artifacts', appId, 'public', 'data', 'locations'),
+      (snapshot) => setLocations(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
+      (error) => console.error("Firestore locations error:", error)
+    );
     return () => { unsubEvents(); unsubContacts(); };
   }, [user]);
 
