@@ -36,7 +36,6 @@ const getDefaultPay = (role) => {
 
 const ROLES = ['Barman', 'Cameriere', 'Aiuto Barman', 'Videomaker', 'Responsabile', 'Altro'];
 
-// Location ricorrenti con link Maps pronto (ricerca Google Maps).
 const LOCATIONS = [
   { name: 'Domus Latae', maps: 'https://www.google.com/maps/search/?api=1&query=Domus+Latae' },
   { name: 'Villa Alfonso', maps: 'https://www.google.com/maps/search/?api=1&query=Villa+Alfonso' },
@@ -47,7 +46,6 @@ const LOCATIONS = [
   { name: 'Salone Romano', maps: 'https://www.google.com/maps/search/?api=1&query=Salone+Romano' },
 ];
 
-// Calcola quanti giorni mancano all'evento e l'etichetta da mostrare.
 const getEventTiming = (dateStr) => {
   if (!dateStr) return { label: '', tone: 'none', daysDiff: null };
   const today = new Date();
@@ -79,6 +77,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
   const [expandedEvent, setExpandedEvent] = useState(null);
+  const [eventActiveTab, setEventActiveTab] = useState('staff');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [activeDropdownId, setActiveDropdownId] = useState(null);
   const [isRubricaOpen, setIsRubricaOpen] = useState(false);
@@ -91,6 +90,11 @@ export default function App() {
   const defaultLocation = { name: '', maps: '' };
 
   const defaultContact = { name: '', surname: '', phone: '', role: 'Barman', pay: '12/h' };
+
+  // Resetta la tab ogni volta che si apre un evento diverso
+  useEffect(() => {
+    setEventActiveTab('staff');
+  }, [expandedEvent]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -155,7 +159,6 @@ export default function App() {
     if (expandedEvent === eventId) setExpandedEvent(null);
   };
 
-  // FIX BUG: non taglia più gli slot pieni senza avvisare.
   const generateStaffSlots = (event) => {
     const count = parseInt(event.staffNeeded) || 0;
     const currentStaff = [...(event.staff || [])];
@@ -184,7 +187,6 @@ export default function App() {
       currentStaff.length = count;
       updateEvent(event.id, { staff: currentStaff });
     }
-    // Se il numero è uguale, non tocca nulla.
   };
 
   const updateStaffMember = (eventId, staffId, field, value) => {
@@ -194,12 +196,14 @@ export default function App() {
     updateEvent(eventId, { staff: newStaff });
   };
 
+  // Quando si sostituisce un dipendente dalla rubrica, i bottoni tornano alla Fase A
   const applyContactToSlot = (eventId, staffId, contact) => {
     const event = events.find(e => e.id === eventId);
     if (!event) return;
     const newStaff = event.staff.map(s => s.id === staffId ? {
       ...s, name: contact.name, surname: contact.surname,
-      phone: contact.phone, role: contact.role, pay: contact.pay
+      phone: contact.phone, role: contact.role, pay: contact.pay,
+      sent: false, confirmed: false
     } : s);
     updateEvent(eventId, { staff: newStaff });
     setActiveDropdownId(null);
@@ -275,7 +279,7 @@ export default function App() {
     await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'locations', locationId));
     setLocRubricaView('list');
   };
-  // Scrive al contatto via WhatsApp direttamente dalla rubrica.
+
   const messageContact = (contact) => {
     const phone = (contact.phone || '').replace(/\D/g, '');
     if (!phone) return;
@@ -324,7 +328,28 @@ export default function App() {
     window.open(`https://wa.me/${(emp.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(rawMessage)}`, '_blank');
   };
 
-  // PROMEMORIA: messaggio corto da inviare il giorno prima.
+  // Promemoria 7 giorni prima
+  const formatReminder7daysMessage = (event, emp) => {
+    const eventDate = emp.date || event.date;
+    const dateParts = eventDate.split('-');
+    const formattedDate = dateParts.length === 3
+      ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`
+      : eventDate;
+
+    let lines = [`Ciao ${emp.name || ''}! 👋`];
+    lines.push(`Tra *7 giorni* c'è l'evento${event.clientName ? ' *' + event.clientName + '*' : ''} del *${formattedDate}*.`);
+    lines.push('');
+    lines.push(`⏰ Ti aspetto alle *${emp.startTime || '18:00'}*${event.location ? ' a *' + event.location + '*' : ''}.`);
+    if (emp.mapsLink) lines.push(`📍 Maps: ${emp.mapsLink}`);
+    if (emp.uniformColor) lines.push(`👔 Divisa: ${emp.uniformColor}`);
+    lines.push('');
+    lines.push('Segna la data in agenda! A presto 🚀');
+
+    const rawMessage = lines.join('\n');
+    window.open(`https://wa.me/${(emp.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(rawMessage)}`, '_blank');
+  };
+
+  // Promemoria giorno prima
   const formatReminderMessage = (event, emp) => {
     const eventDate = emp.date || event.date;
     const dateParts = eventDate.split('-');
@@ -352,13 +377,11 @@ export default function App() {
     return dateStr;
   };
 
-  // Conta quanti eventi cadono nello stesso giorno (per l'avviso doppio evento).
   const dateCounts = events.reduce((acc, e) => {
     if (e.date) acc[e.date] = (acc[e.date] || 0) + 1;
     return acc;
   }, {});
 
-  // ORDINAMENTO: prima i futuri (dal più vicino), poi i passati (dal più recente).
   const sortedEvents = [...events].sort((a, b) => {
     const da = getEventTiming(a.date).daysDiff;
     const dbb = getEventTiming(b.date).daysDiff;
@@ -444,6 +467,7 @@ export default function App() {
 
           return (
             <div key={event.id} className={`bg-white rounded-2xl shadow-sm border overflow-hidden ${timing.tone === 'today' ? 'border-red-200' : 'border-slate-100'} ${isPast ? 'opacity-70' : ''}`}>
+              {/* Testata evento (sempre visibile) */}
               <div
                 className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
                 onClick={(e) => { e.stopPropagation(); setExpandedEvent(isExpanded ? null : event.id); }}
@@ -488,108 +512,153 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Sezione espansa con TAB */}
               {isExpanded && (
-                <div className="border-t border-slate-100 px-4 py-4 space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-slate-500 font-medium block mb-1">Cliente / Evento</label>
-                      <input
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
-                        value={event.clientName || ''}
-                        onChange={e => updateEvent(event.id, { clientName: e.target.value })}
-                        placeholder="Nome cliente"
-                        onClick={e => e.stopPropagation()}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-500 font-medium block mb-1">Location</label>
-                      <select
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
-                        value={isCustomLoc ? '__custom__' : (knownVenue ? event.location : '')}
-                        onClick={e => e.stopPropagation()}
-                        onChange={e => {
-                          const val = e.target.value;
-                          if (val === '__custom__') {
-                            updateEvent(event.id, { locationCustom: true, locationMaps: '' });
-                          } else if (val === '') {
-                            updateEvent(event.id, { location: '', locationMaps: '', locationCustom: false });
-                          } else {
-                            const venue = locations.find(l => l.name === val);
-                            updateEvent(event.id, { location: val, locationMaps: venue ? venue.maps : '', locationCustom: false });
-                          }
-                        }}
-                      >
-                        <option value="">— Seleziona —</option>
-                        {locations.map(l => <option key={l.name} value={l.name}>{l.name}</option>)}
-                        <option value="__custom__">Altro (scrivi a mano)</option>
-                      </select>
-                      {isCustomLoc && (
-                        <input
-                          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-2 focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
-                          value={event.location || ''}
-                          onChange={e => updateEvent(event.id, { location: e.target.value })}
-                          placeholder="Via, Città"
-                          onClick={e => e.stopPropagation()}
-                        />
-                      )}
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-500 font-medium block mb-1">Data</label>
-                      <input
-                        type="date"
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
-                        value={event.date || ''}
-                        onChange={e => updateEvent(event.id, { date: e.target.value })}
-                        onClick={e => e.stopPropagation()}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-500 font-medium block mb-1">N° Staff</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          min="0"
-                          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
-                          value={event.staffNeeded || 0}
-                          onChange={e => updateEvent(event.id, { staffNeeded: parseInt(e.target.value) || 0 })}
-                          onClick={e => e.stopPropagation()}
-                        />
-                        <button
-                          className="bg-[#385b4f] text-white px-3 rounded-xl text-xs font-bold hover:bg-[#2c473e] transition-colors flex-shrink-0"
-                          onClick={e => { e.stopPropagation(); generateStaffSlots(event); }}
-                        >
-                          Aggiorna
-                        </button>
-                      </div>
-                    </div>
+                <div className="border-t border-slate-100">
+                  {/* Barra Tab */}
+                  <div className="flex border-b border-slate-100">
+                    <button
+                      className={`flex-1 py-3 text-sm font-bold transition-colors border-b-2 -mb-px ${eventActiveTab === 'staff' ? 'text-[#385b4f] border-[#385b4f]' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+                      onClick={e => { e.stopPropagation(); setEventActiveTab('staff'); }}
+                    >
+                      👥 Staff {staffTotal > 0 ? `(${confirmedCount}/${staffTotal})` : ''}
+                    </button>
+                    <button
+                      className={`flex-1 py-3 text-sm font-bold transition-colors border-b-2 -mb-px ${eventActiveTab === 'details' ? 'text-[#385b4f] border-[#385b4f]' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+                      onClick={e => { e.stopPropagation(); setEventActiveTab('details'); }}
+                    >
+                      📋 Dettagli Evento
+                    </button>
                   </div>
 
-                  {staffTotal > 0 && (
-                    <p className="text-xs text-slate-400">
-                      Inviati: <span className="font-semibold text-slate-600">{sentCount}/{(event.staff || []).length}</span> · Confermati: <span className="font-semibold text-slate-600">{confirmedCount}/{staffTotal}</span>
-                    </p>
+                  {/* TAB: Dettagli Evento */}
+                  {eventActiveTab === 'details' && (
+                    <div className="px-4 py-4 space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-slate-500 font-medium block mb-1">Cliente / Evento</label>
+                          <input
+                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
+                            value={event.clientName || ''}
+                            onChange={e => updateEvent(event.id, { clientName: e.target.value })}
+                            placeholder="Nome cliente"
+                            onClick={e => e.stopPropagation()}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-slate-500 font-medium block mb-1">Location</label>
+                          <select
+                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
+                            value={isCustomLoc ? '__custom__' : (knownVenue ? event.location : '')}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => {
+                              const val = e.target.value;
+                              if (val === '__custom__') {
+                                updateEvent(event.id, { locationCustom: true, locationMaps: '' });
+                              } else if (val === '') {
+                                updateEvent(event.id, { location: '', locationMaps: '', locationCustom: false });
+                              } else {
+                                const venue = locations.find(l => l.name === val);
+                                updateEvent(event.id, { location: val, locationMaps: venue ? venue.maps : '', locationCustom: false });
+                              }
+                            }}
+                          >
+                            <option value="">— Seleziona —</option>
+                            {locations.map(l => <option key={l.name} value={l.name}>{l.name}</option>)}
+                            <option value="__custom__">Altro (scrivi a mano)</option>
+                          </select>
+                          {isCustomLoc && (
+                            <input
+                              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-2 focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
+                              value={event.location || ''}
+                              onChange={e => updateEvent(event.id, { location: e.target.value })}
+                              placeholder="Via, Città"
+                              onClick={e => e.stopPropagation()}
+                            />
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-xs text-slate-500 font-medium block mb-1">Data</label>
+                          <input
+                            type="date"
+                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
+                            value={event.date || ''}
+                            onChange={e => updateEvent(event.id, { date: e.target.value })}
+                            onClick={e => e.stopPropagation()}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-slate-500 font-medium block mb-1">N° Staff</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#385b4f]/30"
+                              value={event.staffNeeded || 0}
+                              onChange={e => updateEvent(event.id, { staffNeeded: parseInt(e.target.value) || 0 })}
+                              onClick={e => e.stopPropagation()}
+                            />
+                            <button
+                              className="bg-[#385b4f] text-white px-3 rounded-xl text-xs font-bold hover:bg-[#2c473e] transition-colors flex-shrink-0"
+                              onClick={e => { e.stopPropagation(); generateStaffSlots(event); }}
+                            >
+                              Aggiorna
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {staffTotal > 0 && (
+                        <div className="bg-slate-50 rounded-xl p-3 grid grid-cols-3 gap-2 text-center">
+                          <div>
+                            <p className="text-lg font-black text-slate-700">{staffTotal}</p>
+                            <p className="text-[10px] text-slate-400 font-medium uppercase">Staff totale</p>
+                          </div>
+                          <div>
+                            <p className="text-lg font-black text-amber-600">{sentCount}</p>
+                            <p className="text-[10px] text-slate-400 font-medium uppercase">Inviati</p>
+                          </div>
+                          <div>
+                            <p className="text-lg font-black text-green-600">{confirmedCount}</p>
+                            <p className="text-[10px] text-slate-400 font-medium uppercase">Confermati</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
 
-                  {(event.staff || []).length > 0 && (
-                    <div className="space-y-3">
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Slot Staff</p>
-                      {(event.staff || []).map((emp, idx) => (
-                        <StaffSlot
-                          key={emp.id}
-                          emp={emp}
-                          idx={idx}
-                          event={event}
-                          contacts={contacts}
-                          locations={locations}
-                          activeDropdownId={activeDropdownId}
-                          setActiveDropdownId={setActiveDropdownId}
-                          updateStaffMember={updateStaffMember}
-                          applyContactToSlot={applyContactToSlot}
-                          removeStaffMember={removeStaffMember}
-                          formatWhatsAppMessage={formatWhatsAppMessage}
-                          formatReminderMessage={formatReminderMessage}
-                        />
-                      ))}
+                  {/* TAB: Staff */}
+                  {eventActiveTab === 'staff' && (
+                    <div className="px-4 py-4 space-y-3">
+                      {(event.staff || []).length === 0 ? (
+                        <div className="text-center py-8 text-slate-400">
+                          <Users size={32} className="mx-auto mb-2 opacity-30" />
+                          <p className="text-sm">Nessuno slot staff.</p>
+                          <p className="text-xs mt-1">Vai su "Dettagli Evento" per impostare il numero di staff.</p>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Slot Staff</p>
+                          {(event.staff || []).map((emp, idx) => (
+                            <StaffSlot
+                              key={emp.id}
+                              emp={emp}
+                              idx={idx}
+                              event={event}
+                              contacts={contacts}
+                              locations={locations}
+                              activeDropdownId={activeDropdownId}
+                              setActiveDropdownId={setActiveDropdownId}
+                              updateStaffMember={updateStaffMember}
+                              applyContactToSlot={applyContactToSlot}
+                              removeStaffMember={removeStaffMember}
+                              formatWhatsAppMessage={formatWhatsAppMessage}
+                              formatReminderMessage={formatReminderMessage}
+                              formatReminder7daysMessage={formatReminder7daysMessage}
+                            />
+                          ))}
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -873,20 +942,22 @@ export default function App() {
   );
 }
 
-function StaffSlot({ emp, idx, event, contacts, locations, activeDropdownId, setActiveDropdownId, updateStaffMember, applyContactToSlot, removeStaffMember, formatWhatsAppMessage, formatReminderMessage }) {
+function StaffSlot({ emp, idx, event, contacts, locations, activeDropdownId, setActiveDropdownId, updateStaffMember, applyContactToSlot, removeStaffMember, formatWhatsAppMessage, formatReminderMessage, formatReminder7daysMessage }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  
+
   const dropdownId = `${event.id}-${emp.id}`;
   const isDropdownOpen = activeDropdownId === dropdownId;
 
-  // Logica degli Stati per i Colori
   const hasName = emp.name && emp.surname;
   const isConfirmed = emp.confirmed;
   const isSent = emp.sent;
   const isEmpty = !hasName;
 
-  // Assegnazione Classi CSS Dinamiche in base allo stato
-  let cardStyle = "border-slate-200 bg-white"; // Default (Assegnato ma fermo)
+  // Fase A: ha un nome ma non ancora inviato e non confermato
+  // Fase B: inviato, in attesa di conferma
+  // Fase C: confermato
+
+  let cardStyle = "border-slate-200 bg-white";
   let headerStyle = "hover:bg-slate-50";
   let badge = null;
 
@@ -894,7 +965,7 @@ function StaffSlot({ emp, idx, event, contacts, locations, activeDropdownId, set
     cardStyle = "border-slate-300 border-dashed bg-slate-50 opacity-80";
     badge = <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-2 py-0.5 rounded-md">VUOTO</span>;
   } else if (isConfirmed) {
-    cardStyle = "border-green-400 bg-green-50/30 shadow-sm";
+    cardStyle = "border-green-400 bg-green-50/30 shadow-sm ring-2 ring-green-200/60";
     headerStyle = "bg-green-50/50 hover:bg-green-100/50";
     badge = <span className="text-[10px] font-bold text-green-700 bg-green-200 px-2 py-0.5 rounded-md flex items-center gap-1"><CheckCircle2 size={12} /> CONFERMATO</span>;
   } else if (isSent) {
@@ -908,14 +979,13 @@ function StaffSlot({ emp, idx, event, contacts, locations, activeDropdownId, set
   const displayName = hasName ? `${emp.surname} ${emp.name}` : 'Slot da assegnare';
   const timeString = `${emp.startTime || '18:00'} - ${emp.endTime || '02:00'}`;
 
-  // Stile condiviso per tutti gli input per non ripetere codice
   const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-[#385b4f] focus:ring-1 focus:ring-[#385b4f] transition-all shadow-inner";
   const labelStyle = "text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 block ml-1";
 
   return (
     <div className={`border-2 rounded-xl mb-2 transition-all duration-200 ${cardStyle}`}>
-      
-      {/* 1. TESTATA FISARMONICA (Sempre visibile) */}
+
+      {/* Testata fisarmonica */}
       <div
         className={`flex items-center justify-between p-3.5 cursor-pointer transition-colors rounded-t-xl ${headerStyle} ${isExpanded && !isEmpty ? 'border-b border-slate-200/50' : ''}`}
         onClick={() => setIsExpanded(!isExpanded)}
@@ -926,24 +996,24 @@ function StaffSlot({ emp, idx, event, contacts, locations, activeDropdownId, set
               {displayName}
             </p>
             <p className="text-[11px] font-medium text-slate-500 truncate mt-0.5">
-              <span className={isEmpty ? '' : 'text-[#385b4f] font-bold'}>{emp.role || 'Barman'}</span> 
-              <span className="mx-1.5 opacity-40">|</span> 
+              <span className={isEmpty ? '' : 'text-[#385b4f] font-bold'}>{emp.role || 'Barman'}</span>
+              <span className="mx-1.5 opacity-40">|</span>
               {timeString}
             </p>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2 flex-shrink-0">
           {badge}
           {isExpanded ? <ChevronDown size={18} className="text-slate-400" /> : <ChevronRight size={18} className="text-slate-400" />}
         </div>
       </div>
 
-      {/* 2. CORPO DETTAGLI (Visibile se aperto) */}
+      {/* Corpo dettagli */}
       {isExpanded && (
         <div className="p-4 space-y-5">
-          
-          {/* HEADER INTERNO CON AZIONI RAPIDE */}
+
+          {/* Selettore rubrica + rimuovi */}
           <div className="flex items-center justify-between pb-2 border-b border-slate-200/50">
             <div className="relative flex-1 mr-3" onClick={e => e.stopPropagation()}>
               <button
@@ -975,7 +1045,7 @@ function StaffSlot({ emp, idx, event, contacts, locations, activeDropdownId, set
             </button>
           </div>
 
-          {/* BOX 1: ANAGRAFICA */}
+          {/* Anagrafica */}
           <div className="space-y-3">
             <h4 className="text-[11px] font-black text-slate-700 border-b border-slate-200 pb-1 flex items-center gap-1.5"><User size={14} className="text-[#385b4f]"/> ANAGRAFICA</h4>
             <div className="grid grid-cols-2 gap-3">
@@ -985,47 +1055,47 @@ function StaffSlot({ emp, idx, event, contacts, locations, activeDropdownId, set
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><label className={labelStyle}>Telefono (WhatsApp)</label><input className={inputStyle} value={emp.phone || ''} onChange={e => updateStaffMember(event.id, emp.id, 'phone', e.target.value)} placeholder="39333..." onClick={e => e.stopPropagation()}/></div>
               <div className="flex gap-2">
-                 <div className="flex-1"><label className={labelStyle}>Ruolo</label>
-                 <select className={inputStyle} value={emp.role || 'Barman'} onChange={e => updateStaffMember(event.id, emp.id, 'role', e.target.value)} onClick={e => e.stopPropagation()}>
-                    {['Barman','Cameriere','Aiuto Barman','Videomaker','Responsabile','Altro'].map(r => <option key={r}>{r}</option>)}
-                  </select></div>
-                  <div className="w-24"><label className={labelStyle}>Paga</label><input className={`${inputStyle} text-center`} value={emp.pay || ''} onChange={e => updateStaffMember(event.id, emp.id, 'pay', e.target.value)} placeholder="10/h" onClick={e => e.stopPropagation()}/></div>
+                <div className="flex-1"><label className={labelStyle}>Ruolo</label>
+                <select className={inputStyle} value={emp.role || 'Barman'} onChange={e => updateStaffMember(event.id, emp.id, 'role', e.target.value)} onClick={e => e.stopPropagation()}>
+                  {['Barman','Cameriere','Aiuto Barman','Videomaker','Responsabile','Altro'].map(r => <option key={r}>{r}</option>)}
+                </select></div>
+                <div className="w-24"><label className={labelStyle}>Paga</label><input className={`${inputStyle} text-center`} value={emp.pay || ''} onChange={e => updateStaffMember(event.id, emp.id, 'pay', e.target.value)} placeholder="10/h" onClick={e => e.stopPropagation()}/></div>
               </div>
             </div>
           </div>
 
-          {/* BOX 2: TEMPI E LUOGO */}
+          {/* Tempi e luogo */}
           <div className="space-y-3 pt-2">
-             <h4 className="text-[11px] font-black text-slate-700 border-b border-slate-200 pb-1 flex items-center gap-1.5"><Clock size={14} className="text-[#385b4f]"/> TEMPI E LUOGO</h4>
-             <div className="grid grid-cols-3 gap-3">
-                <div onClick={e => e.stopPropagation()}>
-                  <label className={labelStyle}>Data</label>
-                  <input type="date" className={inputStyle} value={emp.date || event.date || ''} onChange={e => updateStaffMember(event.id, emp.id, 'date', e.target.value)} />
-                </div>
-                <div onClick={e => e.stopPropagation()}>
-                  <label className={labelStyle}>Inizio</label>
-                  <input type="time" className={inputStyle} value={emp.startTime || '18:00'} onChange={e => updateStaffMember(event.id, emp.id, 'startTime', e.target.value)} />
-                </div>
-                <div onClick={e => e.stopPropagation()}>
-                  <label className={labelStyle}>Fine</label>
-                  <input type="time" className={inputStyle} value={emp.endTime || '02:00'} onChange={e => updateStaffMember(event.id, emp.id, 'endTime', e.target.value)} />
-                </div>
-             </div>
-             <div onClick={e => e.stopPropagation()}>
-                <label className={labelStyle}>Link Maps (Posizione)</label>
-                <div className="flex gap-2">
-                  <select className="w-1/3 bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-[11px] font-bold text-[#385b4f] focus:outline-none focus:border-[#385b4f]"
-                    value="" onChange={e => { if (e.target.value) updateStaffMember(event.id, emp.id, 'mapsLink', e.target.value); }}>
-                    <option value="">📍 Copia da...</option>
-                    {event.locationMaps && <option value={event.locationMaps}>Evento</option>}
-                    {(locations || []).map(l => l.maps && <option key={l.id} value={l.maps}>{l.name}</option>)}
-                  </select>
-                  <input className={`w-2/3 ${inputStyle}`} value={emp.mapsLink || ''} onChange={e => updateStaffMember(event.id, emp.id, 'mapsLink', e.target.value)} placeholder="https://maps.google.com/..." />
-                </div>
-             </div>
+            <h4 className="text-[11px] font-black text-slate-700 border-b border-slate-200 pb-1 flex items-center gap-1.5"><Clock size={14} className="text-[#385b4f]"/> TEMPI E LUOGO</h4>
+            <div className="grid grid-cols-3 gap-3">
+              <div onClick={e => e.stopPropagation()}>
+                <label className={labelStyle}>Data</label>
+                <input type="date" className={inputStyle} value={emp.date || event.date || ''} onChange={e => updateStaffMember(event.id, emp.id, 'date', e.target.value)} />
+              </div>
+              <div onClick={e => e.stopPropagation()}>
+                <label className={labelStyle}>Inizio</label>
+                <input type="time" className={inputStyle} value={emp.startTime || '18:00'} onChange={e => updateStaffMember(event.id, emp.id, 'startTime', e.target.value)} />
+              </div>
+              <div onClick={e => e.stopPropagation()}>
+                <label className={labelStyle}>Fine</label>
+                <input type="time" className={inputStyle} value={emp.endTime || '02:00'} onChange={e => updateStaffMember(event.id, emp.id, 'endTime', e.target.value)} />
+              </div>
+            </div>
+            <div onClick={e => e.stopPropagation()}>
+              <label className={labelStyle}>Link Maps (Posizione)</label>
+              <div className="flex gap-2">
+                <select className="w-1/3 bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-[11px] font-bold text-[#385b4f] focus:outline-none focus:border-[#385b4f]"
+                  value="" onChange={e => { if (e.target.value) updateStaffMember(event.id, emp.id, 'mapsLink', e.target.value); }}>
+                  <option value="">📍 Copia da...</option>
+                  {event.locationMaps && <option value={event.locationMaps}>Evento</option>}
+                  {(locations || []).map(l => l.maps && <option key={l.id} value={l.maps}>{l.name}</option>)}
+                </select>
+                <input className={`w-2/3 ${inputStyle}`} value={emp.mapsLink || ''} onChange={e => updateStaffMember(event.id, emp.id, 'mapsLink', e.target.value)} placeholder="https://maps.google.com/..." />
+              </div>
+            </div>
           </div>
 
-          {/* BOX 3: DETTAGLI */}
+          {/* Info operative */}
           <div className="space-y-3 pt-2">
             <h4 className="text-[11px] font-black text-slate-700 border-b border-slate-200 pb-1 flex items-center gap-1.5"><List size={14} className="text-[#385b4f]"/> INFO OPERATIVE</h4>
             <div>
@@ -1046,33 +1116,79 @@ function StaffSlot({ emp, idx, event, contacts, locations, activeDropdownId, set
             </div>
           </div>
 
-          {/* PULSANTIERA FINALE */}
-          <div className="pt-4 mt-2 border-t border-slate-200">
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <button
-                className={`flex items-center justify-center gap-1.5 py-3 rounded-lg text-sm font-black transition-all shadow-sm border ${isConfirmed ? 'bg-green-100 text-green-700 border-green-300' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400'}`}
-                onClick={e => { e.stopPropagation(); updateStaffMember(event.id, emp.id, 'confirmed', !emp.confirmed); }}
-              >
-                <CheckCircle2 size={18} /> {isConfirmed ? 'CONFERMATO' : 'CONFERMA TURNO'}
-              </button>
-              
-              <button
-                className={`flex items-center justify-center gap-1.5 py-3 rounded-lg text-sm font-black transition-all shadow-sm disabled:opacity-40 border border-transparent ${isSent ? 'bg-[#2c473e] text-white hover:bg-[#1f332c]' : 'bg-[#25D366] text-white hover:bg-[#1ebd5a]'}`}
-                disabled={!emp.phone}
-                onClick={e => { e.stopPropagation(); formatWhatsAppMessage(event, emp); updateStaffMember(event.id, emp.id, 'sent', true); }}
-              >
-                <MessageCircle size={18} /> {isSent ? 'REINVIA INFO' : 'WHATSAPP'}
-              </button>
-            </div>
+          {/* ==============================
+              PULSANTIERA — FASI A / B / C
+          ============================== */}
+          {hasName && (
+            <div className="pt-4 mt-2 border-t border-slate-200">
 
-            <button
-              className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-bold border border-slate-200 bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors disabled:opacity-40"
-              disabled={!emp.phone}
-              onClick={e => { e.stopPropagation(); formatReminderMessage(event, emp); }}
-            >
-              <Bell size={14} /> PROMEMORIA WHATSAPP (GIORNO PRIMA)
-            </button>
-          </div>
+              {/* FASE A — DA INVIARE: unico mega-pulsante verde WhatsApp */}
+              {!isSent && !isConfirmed && (
+                <button
+                  className="w-full py-5 rounded-2xl text-white font-black text-lg flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-transform disabled:opacity-40"
+                  style={{ backgroundColor: '#25D366', fontSize: '18px', boxShadow: '0 4px 20px rgba(37,211,102,0.45)' }}
+                  disabled={!emp.phone}
+                  onClick={e => { e.stopPropagation(); formatWhatsAppMessage(event, emp); updateStaffMember(event.id, emp.id, 'sent', true); }}
+                >
+                  <MessageCircle size={28} /> INVIA SU WHATSAPP
+                </button>
+              )}
+
+              {/* FASE B — IN ATTESA: banner giallo + Conferma + Reinvia */}
+              {isSent && !isConfirmed && (
+                <div className="space-y-3">
+                  <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 text-center">
+                    <p className="text-amber-800 font-black text-sm">⏳ In attesa di conferma dal dipendente</p>
+                    <p className="text-amber-600 text-xs mt-0.5">Appena ti risponde, segna qui sotto</p>
+                  </div>
+                  <button
+                    className="w-full py-4 rounded-xl text-white font-black text-base flex items-center justify-center gap-2 shadow-md active:scale-95 transition-transform"
+                    style={{ backgroundColor: '#385b4f' }}
+                    onClick={e => { e.stopPropagation(); updateStaffMember(event.id, emp.id, 'confirmed', true); }}
+                  >
+                    ✅ SEGNA CONFERMATO
+                  </button>
+                  <button
+                    className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 bg-slate-200 text-slate-600 hover:bg-slate-300 active:scale-95 transition-all disabled:opacity-40"
+                    disabled={!emp.phone}
+                    onClick={e => { e.stopPropagation(); formatWhatsAppMessage(event, emp); }}
+                  >
+                    🔄 Reinvia Info
+                  </button>
+                </div>
+              )}
+
+              {/* FASE C — CONFERMATO: reinvia grigio + promemoria 7gg + promemoria domani */}
+              {isConfirmed && (
+                <div className="space-y-2">
+                  <button
+                    className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 bg-white border-2 border-slate-200 text-slate-500 hover:bg-slate-50 active:scale-95 transition-all disabled:opacity-40"
+                    disabled={!emp.phone}
+                    onClick={e => { e.stopPropagation(); formatWhatsAppMessage(event, emp); }}
+                  >
+                    🔄 Reinvia Info
+                  </button>
+                  <button
+                    className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-40"
+                    style={{ backgroundColor: '#f59e0b', color: 'white' }}
+                    disabled={!emp.phone}
+                    onClick={e => { e.stopPropagation(); formatReminder7daysMessage(event, emp); }}
+                  >
+                    <Bell size={16} /> 📱 Promemoria -7gg
+                  </button>
+                  <button
+                    className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-40"
+                    style={{ backgroundColor: '#f97316', color: 'white' }}
+                    disabled={!emp.phone}
+                    onClick={e => { e.stopPropagation(); formatReminderMessage(event, emp); }}
+                  >
+                    <Bell size={16} /> 📱 Promemoria Domani
+                  </button>
+                </div>
+              )}
+
+            </div>
+          )}
 
         </div>
       )}
