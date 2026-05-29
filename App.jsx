@@ -874,188 +874,203 @@ export default function App() {
 }
 
 function StaffSlot({ emp, idx, event, contacts, locations, activeDropdownId, setActiveDropdownId, updateStaffMember, applyContactToSlot, removeStaffMember, formatWhatsAppMessage, formatReminderMessage }) {
-  // Aggiungiamo lo stato locale per la fisarmonica (aperto/chiuso)
   const [isExpanded, setIsExpanded] = useState(false);
   
   const dropdownId = `${event.id}-${emp.id}`;
   const isDropdownOpen = activeDropdownId === dropdownId;
 
-  // Variabili per l'interfaccia compatta
+  // Logica degli Stati per i Colori
   const hasName = emp.name && emp.surname;
+  const isConfirmed = emp.confirmed;
+  const isSent = emp.sent;
+  const isEmpty = !hasName;
+
+  // Assegnazione Classi CSS Dinamiche in base allo stato
+  let cardStyle = "border-slate-200 bg-white"; // Default (Assegnato ma fermo)
+  let headerStyle = "hover:bg-slate-50";
+  let badge = null;
+
+  if (isEmpty) {
+    cardStyle = "border-slate-300 border-dashed bg-slate-50 opacity-80";
+    badge = <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-2 py-0.5 rounded-md">VUOTO</span>;
+  } else if (isConfirmed) {
+    cardStyle = "border-green-400 bg-green-50/30 shadow-sm";
+    headerStyle = "bg-green-50/50 hover:bg-green-100/50";
+    badge = <span className="text-[10px] font-bold text-green-700 bg-green-200 px-2 py-0.5 rounded-md flex items-center gap-1"><CheckCircle2 size={12} /> CONFERMATO</span>;
+  } else if (isSent) {
+    cardStyle = "border-amber-300 bg-amber-50/30 shadow-sm";
+    headerStyle = "bg-amber-50/50 hover:bg-amber-100/50";
+    badge = <span className="text-[10px] font-bold text-amber-700 bg-amber-200 px-2 py-0.5 rounded-md flex items-center gap-1"><Clock size={12} /> IN ATTESA</span>;
+  } else {
+    badge = <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">DA INVIARE</span>;
+  }
+
   const displayName = hasName ? `${emp.surname} ${emp.name}` : 'Slot da assegnare';
   const timeString = `${emp.startTime || '18:00'} - ${emp.endTime || '02:00'}`;
 
+  // Stile condiviso per tutti gli input per non ripetere codice
+  const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-[#385b4f] focus:ring-1 focus:ring-[#385b4f] transition-all shadow-inner";
+  const labelStyle = "text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 block ml-1";
+
   return (
-    <div className="border border-slate-200 rounded-2xl bg-white overflow-hidden shadow-sm mb-2 transition-all">
+    <div className={`border-2 rounded-xl mb-2 transition-all duration-200 ${cardStyle}`}>
       
-      {/* 1. TESTATA (Fisarmonica sempre visibile) */}
+      {/* 1. TESTATA FISARMONICA (Sempre visibile) */}
       <div
-        className={`flex items-center justify-between p-3 cursor-pointer hover:bg-slate-50 transition-colors ${isExpanded ? 'bg-slate-50 border-b border-slate-100' : ''}`}
+        className={`flex items-center justify-between p-3.5 cursor-pointer transition-colors rounded-t-xl ${headerStyle} ${isExpanded && !isEmpty ? 'border-b border-slate-200/50' : ''}`}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-3 min-w-0">
-          {/* Pallino di stato: Verde = Ok, Giallo = Da confermare, Grigio = Vuoto */}
-          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${emp.confirmed ? 'bg-green-500' : (hasName ? 'bg-amber-400' : 'bg-slate-300')}`} />
           <div className="min-w-0">
-            <p className={`font-bold text-sm truncate ${hasName ? 'text-slate-800' : 'text-slate-400 italic'}`}>
+            <p className={`font-black text-sm truncate ${isEmpty ? 'text-slate-400' : 'text-slate-800'}`}>
               {displayName}
             </p>
-            <p className="text-xs text-slate-500 truncate mt-0.5">
-              <span className="font-semibold text-[#385b4f]">{emp.role || 'Barman'}</span> <span className="mx-1 opacity-50">|</span> {timeString}
+            <p className="text-[11px] font-medium text-slate-500 truncate mt-0.5">
+              <span className={isEmpty ? '' : 'text-[#385b4f] font-bold'}>{emp.role || 'Barman'}</span> 
+              <span className="mx-1.5 opacity-40">|</span> 
+              {timeString}
             </p>
           </div>
         </div>
         
         <div className="flex items-center gap-2 flex-shrink-0">
-          {emp.sent && !emp.confirmed && (
-            <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full hidden sm:block">Inviato</span>
-          )}
-          {emp.confirmed && (
-            <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <CheckCircle2 size={10} /> Ok
-            </span>
-          )}
-          {isExpanded ? <ChevronDown size={18} className="text-slate-400 ml-1" /> : <ChevronRight size={18} className="text-slate-400 ml-1" />}
+          {badge}
+          {isExpanded ? <ChevronDown size={18} className="text-slate-400" /> : <ChevronRight size={18} className="text-slate-400" />}
         </div>
       </div>
 
-      {/* 2. CORPO DETTAGLI (Visibile solo se aperto) */}
+      {/* 2. CORPO DETTAGLI (Visibile se aperto) */}
       {isExpanded && (
-        <div className="p-4 space-y-4 bg-slate-50/50">
+        <div className="p-4 space-y-5">
           
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black text-[#385b4f] tracking-wider uppercase">Pannello Operativo</span>
-            <button onClick={e => { e.stopPropagation(); removeStaffMember(event.id, emp.id); }} className="text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1 text-[11px] font-bold bg-white px-2 py-1 rounded-lg border border-slate-200">
-              <Trash2 size={12} /> Rimuovi Slot
-            </button>
-          </div>
-
-          {/* RUBRICA DROPDOWN */}
-          <div className="relative" onClick={e => e.stopPropagation()}>
-            <button
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-left bg-white flex items-center justify-between hover:border-[#385b4f] transition-colors shadow-sm"
-              onClick={e => { e.stopPropagation(); setActiveDropdownId(isDropdownOpen ? null : dropdownId); }}
-            >
-              <span className={hasName ? 'text-slate-800 font-medium' : 'text-slate-400'}>
-                {hasName ? `${emp.surname} ${emp.name}` : '🔍 Assegna dalla rubrica...'}
-              </span>
-              <ChevronDown size={16} className="text-slate-400 flex-shrink-0 ml-1" />
-            </button>
-            {isDropdownOpen && (
-              <div className="absolute top-full left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-lg z-30 mt-1 max-h-48 overflow-y-auto">
-                <div className="p-2 border-b border-slate-100 bg-slate-50 sticky top-0">
-                  <p className="text-[10px] uppercase font-bold text-slate-400 px-2 tracking-wider">La tua rubrica</p>
+          {/* HEADER INTERNO CON AZIONI RAPIDE */}
+          <div className="flex items-center justify-between pb-2 border-b border-slate-200/50">
+            <div className="relative flex-1 mr-3" onClick={e => e.stopPropagation()}>
+              <button
+                className="w-full bg-white border border-slate-300 shadow-sm rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between hover:border-[#385b4f] transition-colors"
+                onClick={e => { e.stopPropagation(); setActiveDropdownId(isDropdownOpen ? null : dropdownId); }}
+              >
+                <span className={hasName ? 'text-[#385b4f] font-bold' : 'text-slate-500 font-medium'}>
+                  {hasName ? '🔄 Cambia da rubrica...' : '🔍 Cerca in rubrica...'}
+                </span>
+                <ChevronDown size={16} className="text-slate-400" />
+              </button>
+              {isDropdownOpen && (
+                <div className="absolute top-full left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-xl z-30 mt-1 max-h-48 overflow-y-auto">
+                  {contacts.length === 0
+                    ? <p className="text-xs text-slate-400 p-4 text-center">Nessun contatto</p>
+                    : contacts.slice().sort((a, b) => (a.surname || '').localeCompare(b.surname || '')).map(c => (
+                      <button key={c.id} className="w-full text-left px-3 py-2.5 hover:bg-slate-50 text-sm border-b border-slate-100 last:border-0"
+                        onClick={e => { e.stopPropagation(); applyContactToSlot(event.id, emp.id, c); }}>
+                        <span className="font-bold text-slate-700">{c.surname} {c.name}</span>
+                        <span className="text-[10px] font-medium text-slate-500 ml-2 bg-slate-200 px-1.5 py-0.5 rounded">{c.role}</span>
+                      </button>
+                    ))
+                  }
                 </div>
-                {contacts.length === 0
-                  ? <p className="text-xs text-slate-400 p-4 text-center">Nessun contatto salvato</p>
-                  : contacts.slice().sort((a, b) => (a.surname || '').localeCompare(b.surname || '')).map(c => (
-                    <button key={c.id} className="w-full text-left px-3 py-2.5 hover:bg-slate-50 text-sm border-b border-slate-50 last:border-0"
-                      onClick={e => { e.stopPropagation(); applyContactToSlot(event.id, emp.id, c); }}>
-                      <span className="font-bold text-slate-700">{c.surname} {c.name}</span>
-                      <span className="text-[10px] font-medium text-slate-400 ml-2 bg-slate-100 px-1.5 py-0.5 rounded">{c.role}</span>
-                    </button>
-                  ))
-                }
-              </div>
-            )}
+              )}
+            </div>
+            <button onClick={e => { e.stopPropagation(); removeStaffMember(event.id, emp.id); }} className="text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors" title="Rimuovi Slot">
+              <Trash2 size={16} />
+            </button>
           </div>
 
           {/* BOX 1: ANAGRAFICA */}
-          <div className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-sm space-y-3">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-50 pb-1.5">👤 Chi</p>
-            <div className="grid grid-cols-2 gap-2">
-              <input className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#385b4f] bg-slate-50 focus:bg-white transition-colors"
-                value={emp.name || ''} onChange={e => updateStaffMember(event.id, emp.id, 'name', e.target.value)} placeholder="Nome" onClick={e => e.stopPropagation()}/>
-              <input className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#385b4f] bg-slate-50 focus:bg-white transition-colors"
-                value={emp.surname || ''} onChange={e => updateStaffMember(event.id, emp.id, 'surname', e.target.value)} placeholder="Cognome" onClick={e => e.stopPropagation()}/>
+          <div className="space-y-3">
+            <h4 className="text-[11px] font-black text-slate-700 border-b border-slate-200 pb-1 flex items-center gap-1.5"><User size={14} className="text-[#385b4f]"/> ANAGRAFICA</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className={labelStyle}>Nome</label><input className={inputStyle} value={emp.name || ''} onChange={e => updateStaffMember(event.id, emp.id, 'name', e.target.value)} onClick={e => e.stopPropagation()}/></div>
+              <div><label className={labelStyle}>Cognome</label><input className={inputStyle} value={emp.surname || ''} onChange={e => updateStaffMember(event.id, emp.id, 'surname', e.target.value)} onClick={e => e.stopPropagation()}/></div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <input className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#385b4f] bg-slate-50 focus:bg-white transition-colors"
-                value={emp.phone || ''} onChange={e => updateStaffMember(event.id, emp.id, 'phone', e.target.value)} placeholder="Telefono (Es. 39333...)" onClick={e => e.stopPropagation()}/>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label className={labelStyle}>Telefono (WhatsApp)</label><input className={inputStyle} value={emp.phone || ''} onChange={e => updateStaffMember(event.id, emp.id, 'phone', e.target.value)} placeholder="39333..." onClick={e => e.stopPropagation()}/></div>
               <div className="flex gap-2">
-                 <select className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-[#385b4f] bg-slate-50"
-                    value={emp.role || 'Barman'} onChange={e => updateStaffMember(event.id, emp.id, 'role', e.target.value)} onClick={e => e.stopPropagation()}>
+                 <div className="flex-1"><label className={labelStyle}>Ruolo</label>
+                 <select className={inputStyle} value={emp.role || 'Barman'} onChange={e => updateStaffMember(event.id, emp.id, 'role', e.target.value)} onClick={e => e.stopPropagation()}>
                     {['Barman','Cameriere','Aiuto Barman','Videomaker','Responsabile','Altro'].map(r => <option key={r}>{r}</option>)}
-                  </select>
-                  <input className="w-24 border border-slate-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-[#385b4f] bg-slate-50 text-center"
-                    value={emp.pay || ''} onChange={e => updateStaffMember(event.id, emp.id, 'pay', e.target.value)} placeholder="10/h" onClick={e => e.stopPropagation()}/>
+                  </select></div>
+                  <div className="w-24"><label className={labelStyle}>Paga</label><input className={`${inputStyle} text-center`} value={emp.pay || ''} onChange={e => updateStaffMember(event.id, emp.id, 'pay', e.target.value)} placeholder="10/h" onClick={e => e.stopPropagation()}/></div>
               </div>
             </div>
           </div>
 
           {/* BOX 2: TEMPI E LUOGO */}
-          <div className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-sm space-y-3">
-             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-50 pb-1.5">🕒 Quando & Dove</p>
-             <div className="grid grid-cols-3 gap-2">
+          <div className="space-y-3 pt-2">
+             <h4 className="text-[11px] font-black text-slate-700 border-b border-slate-200 pb-1 flex items-center gap-1.5"><Clock size={14} className="text-[#385b4f]"/> TEMPI E LUOGO</h4>
+             <div className="grid grid-cols-3 gap-3">
                 <div onClick={e => e.stopPropagation()}>
-                  <label className="text-[10px] text-slate-400 block mb-0.5 ml-1 font-medium">Data Turno</label>
-                  <input type="date" className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-[#385b4f] bg-slate-50"
-                    value={emp.date || event.date || ''} onChange={e => updateStaffMember(event.id, emp.id, 'date', e.target.value)} />
+                  <label className={labelStyle}>Data</label>
+                  <input type="date" className={inputStyle} value={emp.date || event.date || ''} onChange={e => updateStaffMember(event.id, emp.id, 'date', e.target.value)} />
                 </div>
                 <div onClick={e => e.stopPropagation()}>
-                  <label className="text-[10px] text-slate-400 block mb-0.5 ml-1 font-medium">Orario Inizio</label>
-                  <input type="time" className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-[#385b4f] bg-slate-50"
-                    value={emp.startTime || '18:00'} onChange={e => updateStaffMember(event.id, emp.id, 'startTime', e.target.value)} />
+                  <label className={labelStyle}>Inizio</label>
+                  <input type="time" className={inputStyle} value={emp.startTime || '18:00'} onChange={e => updateStaffMember(event.id, emp.id, 'startTime', e.target.value)} />
                 </div>
                 <div onClick={e => e.stopPropagation()}>
-                  <label className="text-[10px] text-slate-400 block mb-0.5 ml-1 font-medium">Orario Fine</label>
-                  <input type="time" className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-[#385b4f] bg-slate-50"
-                    value={emp.endTime || '02:00'} onChange={e => updateStaffMember(event.id, emp.id, 'endTime', e.target.value)} />
+                  <label className={labelStyle}>Fine</label>
+                  <input type="time" className={inputStyle} value={emp.endTime || '02:00'} onChange={e => updateStaffMember(event.id, emp.id, 'endTime', e.target.value)} />
                 </div>
              </div>
-             <div className="flex gap-2" onClick={e => e.stopPropagation()}>
-                <select className="w-1/3 border border-slate-200 rounded-lg px-2 py-2 text-[11px] font-medium text-slate-600 focus:outline-none focus:border-[#385b4f] bg-slate-50"
-                  value="" onChange={e => { if (e.target.value) updateStaffMember(event.id, emp.id, 'mapsLink', e.target.value); }}>
-                  <option value="">📍 Copia Link...</option>
-                  {event.locationMaps && <option value={event.locationMaps}>Evento</option>}
-                  {(locations || []).map(l => l.maps && <option key={l.id} value={l.maps}>{l.name}</option>)}
-                </select>
-                <input className="w-2/3 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#385b4f] bg-slate-50"
-                  value={emp.mapsLink || ''} onChange={e => updateStaffMember(event.id, emp.id, 'mapsLink', e.target.value)}
-                  placeholder="https://maps.google.com/..." />
+             <div onClick={e => e.stopPropagation()}>
+                <label className={labelStyle}>Link Maps (Posizione)</label>
+                <div className="flex gap-2">
+                  <select className="w-1/3 bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-[11px] font-bold text-[#385b4f] focus:outline-none focus:border-[#385b4f]"
+                    value="" onChange={e => { if (e.target.value) updateStaffMember(event.id, emp.id, 'mapsLink', e.target.value); }}>
+                    <option value="">📍 Copia da...</option>
+                    {event.locationMaps && <option value={event.locationMaps}>Evento</option>}
+                    {(locations || []).map(l => l.maps && <option key={l.id} value={l.maps}>{l.name}</option>)}
+                  </select>
+                  <input className={`w-2/3 ${inputStyle}`} value={emp.mapsLink || ''} onChange={e => updateStaffMember(event.id, emp.id, 'mapsLink', e.target.value)} placeholder="https://maps.google.com/..." />
+                </div>
              </div>
           </div>
 
           {/* BOX 3: DETTAGLI */}
-          <div className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-sm space-y-2">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-50 pb-1.5 mb-2">📋 Dettagli Operativi</p>
-            <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#385b4f] bg-slate-50"
-              value={emp.uniformColor || ''} onChange={e => updateStaffMember(event.id, emp.id, 'uniformColor', e.target.value)} onClick={e => e.stopPropagation()}>
-              {['Nera (Camicia nera, pantaloni neri)','Bianca (Camicia bianca, pantaloni neri)','Elegante (Giacca, camicia bianca)','Casual (A scelta)'].map(u => <option key={u}>{u}</option>)}
-            </select>
+          <div className="space-y-3 pt-2">
+            <h4 className="text-[11px] font-black text-slate-700 border-b border-slate-200 pb-1 flex items-center gap-1.5"><List size={14} className="text-[#385b4f]"/> INFO OPERATIVE</h4>
+            <div>
+              <label className={labelStyle}>Divisa Richiesta</label>
+              <select className={inputStyle} value={emp.uniformColor || ''} onChange={e => updateStaffMember(event.id, emp.id, 'uniformColor', e.target.value)} onClick={e => e.stopPropagation()}>
+                {['Nera (Camicia nera, pantaloni neri)','Bianca (Camicia bianca, pantaloni neri)','Elegante (Giacca, camicia bianca)','Casual (A scelta)'].map(u => <option key={u}>{u}</option>)}
+              </select>
+            </div>
             {emp.role === 'Barman' && (
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#385b4f] bg-slate-50"
-                value={emp.drinkList || ''} onChange={e => updateStaffMember(event.id, emp.id, 'drinkList', e.target.value)}
-                placeholder="URL Drink List" onClick={e => e.stopPropagation()}/>
+              <div>
+                <label className={labelStyle}>Drink List</label>
+                <input className={inputStyle} value={emp.drinkList || ''} onChange={e => updateStaffMember(event.id, emp.id, 'drinkList', e.target.value)} placeholder="URL menu o lista drink" onClick={e => e.stopPropagation()}/>
+              </div>
             )}
-            <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#385b4f] bg-slate-50"
-              value={emp.notes || ''} onChange={e => updateStaffMember(event.id, emp.id, 'notes', e.target.value)}
-              placeholder="Note (es. porta lo shaker)" onClick={e => e.stopPropagation()}/>
+            <div>
+              <label className={labelStyle}>Note Extra</label>
+              <input className={inputStyle} value={emp.notes || ''} onChange={e => updateStaffMember(event.id, emp.id, 'notes', e.target.value)} placeholder="Es: Porta ghiaccio, pinze..." onClick={e => e.stopPropagation()}/>
+            </div>
           </div>
 
-          {/* BOTTONI DI AZIONE */}
-          <div className="pt-2 space-y-2">
-            <div className="flex gap-2">
+          {/* PULSANTIERA FINALE */}
+          <div className="pt-4 mt-2 border-t border-slate-200">
+            <div className="grid grid-cols-2 gap-3 mb-3">
               <button
-                className={`flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-bold transition-all shadow-sm ${emp.confirmed ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                className={`flex items-center justify-center gap-1.5 py-3 rounded-lg text-sm font-black transition-all shadow-sm border ${isConfirmed ? 'bg-green-100 text-green-700 border-green-300' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400'}`}
                 onClick={e => { e.stopPropagation(); updateStaffMember(event.id, emp.id, 'confirmed', !emp.confirmed); }}
               >
-                <CheckCircle2 size={16} /> {emp.confirmed ? 'Confermato' : 'Conferma Turno'}
+                <CheckCircle2 size={18} /> {isConfirmed ? 'CONFERMATO' : 'CONFERMA TURNO'}
               </button>
+              
               <button
-                className={`flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-bold transition-all shadow-sm disabled:opacity-40 ${emp.sent ? 'bg-[#385b4f] text-white hover:bg-[#2c473e]' : 'bg-[#25D366] text-white hover:bg-[#1ebd5a]'}`}
+                className={`flex items-center justify-center gap-1.5 py-3 rounded-lg text-sm font-black transition-all shadow-sm disabled:opacity-40 border border-transparent ${isSent ? 'bg-[#2c473e] text-white hover:bg-[#1f332c]' : 'bg-[#25D366] text-white hover:bg-[#1ebd5a]'}`}
                 disabled={!emp.phone}
                 onClick={e => { e.stopPropagation(); formatWhatsAppMessage(event, emp); updateStaffMember(event.id, emp.id, 'sent', true); }}
               >
-                <MessageCircle size={16} /> {emp.sent ? 'Reinvia Info' : 'WhatsApp'}
+                <MessageCircle size={18} /> {isSent ? 'REINVIA INFO' : 'WHATSAPP'}
               </button>
             </div>
+
             <button
-              className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-bold bg-[#f3f4f6] text-slate-600 hover:bg-[#e5e7eb] transition-colors disabled:opacity-40 shadow-sm"
+              className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-bold border border-slate-200 bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors disabled:opacity-40"
               disabled={!emp.phone}
               onClick={e => { e.stopPropagation(); formatReminderMessage(event, emp); }}
             >
-              <Bell size={15} /> Promemoria WhatsApp (Giorno prima)
+              <Bell size={14} /> PROMEMORIA WHATSAPP (GIORNO PRIMA)
             </button>
           </div>
 
